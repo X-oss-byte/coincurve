@@ -50,9 +50,10 @@ def build_flags(library, type_, path):
     options = ['--static', {'I': '--cflags-only-I', 'L': '--libs-only-L', 'l': '--libs-only-l'}[type_]]
 
     return [
-        flag.strip('-{}'.format(type_))
+        flag.strip(f'-{type_}')
         for flag in subprocess.check_output(
-            ['pkg-config'] + options + [library], env=dict(os.environ, PKG_CONFIG_PATH=':'.join(pkg_config_path))
+            ['pkg-config'] + options + [library],
+            env=dict(os.environ, PKG_CONFIG_PATH=':'.join(pkg_config_path)),
         )
         .decode('UTF-8')
         .split()
@@ -68,11 +69,7 @@ def _find_lib():
     ffi = FFI()
     try:
         ffi.dlopen('secp256k1')
-        if os.path.exists('/usr/include/secp256k1_ecdh.h'):
-            return True
-        else:
-            # The system library lacks the ecdh module
-            return False
+        return bool(os.path.exists('/usr/include/secp256k1_ecdh.h'))
     except OSError:
         if 'LIB_DIR' in os.environ:
             for path in glob.glob(os.path.join(os.environ['LIB_DIR'], '*secp256k1*')):
@@ -100,7 +97,7 @@ def has_system_lib():
 
 def detect_dll():
     here = os.path.dirname(os.path.abspath(__file__))
-    for fn in os.listdir(os.path.join(here, 'coincurve')):
-        if fn.endswith('.dll'):
-            return True
-    return False
+    return any(
+        fn.endswith('.dll')
+        for fn in os.listdir(os.path.join(here, 'coincurve'))
+    )

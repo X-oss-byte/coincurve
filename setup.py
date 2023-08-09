@@ -21,9 +21,6 @@ try:
     from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
 except ImportError:
     _bdist_wheel = None
-    pass
-
-
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 from setup_support import absolute, build_flags, detect_dll, has_system_lib  # noqa: E402
 
@@ -43,8 +40,7 @@ LIB_TARBALL_URL = f'https://github.com/bitcoin-core/secp256k1/archive/{UPSTREAM_
 # We require setuptools >= 3.3
 if [int(i) for i in setuptools_version.split('.', 2)[:2]] < [3, 3]:
     raise SystemExit(
-        'Your setuptools version ({}) is too old to correctly install this '
-        'package. Please upgrade to a newer version (>= 3.3).'.format(setuptools_version)
+        f'Your setuptools version ({setuptools_version}) is too old to correctly install this package. Please upgrade to a newer version (>= 3.3).'
     )
 
 
@@ -62,15 +58,14 @@ def download_library(command):
 
             r = requests.get(LIB_TARBALL_URL, stream=True)
             status_code = r.status_code
-            if status_code == 200:
-                content = BytesIO(r.raw.read())
-                content.seek(0)
-                with tarfile.open(fileobj=content) as tf:
-                    dirname = tf.getnames()[0].partition('/')[0]
-                    tf.extractall()
-                shutil.move(dirname, libdir)
-            else:
+            if status_code != 200:
                 raise SystemExit('Unable to download secp256k1 library: HTTP-Status: %d', status_code)
+            content = BytesIO(r.raw.read())
+            content.seek(0)
+            with tarfile.open(fileobj=content) as tf:
+                dirname = tf.getnames()[0].partition('/')[0]
+                tf.extractall()
+            shutil.move(dirname, libdir)
         except requests.exceptions.RequestException as e:
             raise SystemExit('Unable to download secp256k1 library: %s', str(e))
 
@@ -191,9 +186,9 @@ class build_clib(_build_clib):
             '--enable-exhaustive-tests=no',
         ]
         if 'COINCURVE_CROSS_HOST' in os.environ:
-            cmd.append('--host={}'.format(os.environ['COINCURVE_CROSS_HOST']))
+            cmd.append(f"--host={os.environ['COINCURVE_CROSS_HOST']}")
 
-        log.debug('Running configure: {}'.format(' '.join(cmd)))
+        log.debug(f"Running configure: {' '.join(cmd)}")
         subprocess.check_call(cmd, cwd=build_temp)
 
         subprocess.check_call([MAKE], cwd=build_temp)
@@ -203,8 +198,6 @@ class build_clib(_build_clib):
         self.build_flags['library_dirs'].extend(build_flags('libsecp256k1', 'L', build_temp))
         if not has_system_lib():
             self.build_flags['define'].append(('CFFI_ENABLE_RECOVERY', None))
-        else:
-            pass
 
 
 class build_ext(_build_ext):

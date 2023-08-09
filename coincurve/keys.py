@@ -54,12 +54,17 @@ class PrivateKey:
         signature = ffi.new('secp256k1_ecdsa_signature *')
         nonce_fn, nonce_data = custom_nonce
 
-        signed = lib.secp256k1_ecdsa_sign(self.context.ctx, signature, msg_hash, self.secret, nonce_fn, nonce_data)
-
-        if not signed:
+        if signed := lib.secp256k1_ecdsa_sign(
+            self.context.ctx,
+            signature,
+            msg_hash,
+            self.secret,
+            nonce_fn,
+            nonce_data,
+        ):
+            return cdata_to_der(signature, self.context)
+        else:
             raise ValueError('The nonce generation function failed, or the private key was invalid.')
-
-        return cdata_to_der(signature, self.context)
 
     def sign_schnorr(self, message: bytes, aux_randomness: bytes = b'') -> bytes:
         """Create a Schnorr signature.
@@ -90,13 +95,16 @@ class PrivateKey:
         if not res:
             raise ValueError('Signing failed')
 
-        res = lib.secp256k1_schnorrsig_verify(
-            self.context.ctx, signature, message, len(message), self.public_key_xonly.public_key
-        )
-        if not res:
+        if res := lib.secp256k1_schnorrsig_verify(
+            self.context.ctx,
+            signature,
+            message,
+            len(message),
+            self.public_key_xonly.public_key,
+        ):
+            return bytes(ffi.buffer(signature))
+        else:
             raise ValueError('Invalid signature')
-
-        return bytes(ffi.buffer(signature))
 
     def sign_recoverable(self, message: bytes, hasher: Hasher = sha256, custom_nonce: Nonce = DEFAULT_NONCE) -> bytes:
         """
@@ -118,14 +126,17 @@ class PrivateKey:
         signature = ffi.new('secp256k1_ecdsa_recoverable_signature *')
         nonce_fn, nonce_data = custom_nonce
 
-        signed = lib.secp256k1_ecdsa_sign_recoverable(
-            self.context.ctx, signature, msg_hash, self.secret, nonce_fn, nonce_data
-        )
-
-        if not signed:
+        if signed := lib.secp256k1_ecdsa_sign_recoverable(
+            self.context.ctx,
+            signature,
+            msg_hash,
+            self.secret,
+            nonce_fn,
+            nonce_data,
+        ):
+            return serialize_recoverable(signature, self.context)
+        else:
             raise ValueError('The nonce generation function failed, or the private key was invalid.')
-
-        return serialize_recoverable(signature, self.context)
 
     def ecdh(self, public_key: bytes) -> bytes:
         """
@@ -308,12 +319,13 @@ class PublicKey:
         else:
             public_key = ffi.new('secp256k1_pubkey *')
 
-            parsed = lib.secp256k1_ec_pubkey_parse(context.ctx, public_key, data, len(data))
+            if parsed := lib.secp256k1_ec_pubkey_parse(
+                context.ctx, public_key, data, len(data)
+            ):
+                self.public_key = public_key
 
-            if not parsed:
+            else:
                 raise ValueError('The public key could not be parsed or is invalid.')
-
-            self.public_key = public_key
 
         self.context = context
 
@@ -329,27 +341,27 @@ class PublicKey:
         """
         public_key = ffi.new('secp256k1_pubkey *')
 
-        created = lib.secp256k1_ec_pubkey_create(context.ctx, public_key, validate_secret(secret))
-
-        if not created:  # no cov
+        if created := lib.secp256k1_ec_pubkey_create(
+            context.ctx, public_key, validate_secret(secret)
+        ):
+            return PublicKey(public_key, context)
+        else:
             raise ValueError(
                 'Somehow an invalid secret was used. Please '
                 'submit this as an issue here: '
                 'https://github.com/ofek/coincurve/issues/new'
             )
 
-        return PublicKey(public_key, context)
-
     @classmethod
     def from_valid_secret(cls, secret: bytes, context: Context = GLOBAL_CONTEXT):
         public_key = ffi.new('secp256k1_pubkey *')
 
-        created = lib.secp256k1_ec_pubkey_create(context.ctx, public_key, secret)
-
-        if not created:
+        if created := lib.secp256k1_ec_pubkey_create(
+            context.ctx, public_key, secret
+        ):
+            return PublicKey(public_key, context)
+        else:
             raise ValueError('Invalid secret.')
-
-        return PublicKey(public_key, context)
 
     @classmethod
     def from_point(cls, x: int, y: int, context: Context = GLOBAL_CONTEXT):
@@ -398,14 +410,15 @@ class PublicKey:
         """
         public_key = ffi.new('secp256k1_pubkey *')
 
-        combined = lib.secp256k1_ec_pubkey_combine(
-            context.ctx, public_key, [pk.public_key for pk in public_keys], len(public_keys)
-        )
-
-        if not combined:
+        if combined := lib.secp256k1_ec_pubkey_combine(
+            context.ctx,
+            public_key,
+            [pk.public_key for pk in public_keys],
+            len(public_keys),
+        ):
+            return PublicKey(public_key, context)
+        else:
             raise ValueError('The sum of the public keys is invalid.')
-
-        return PublicKey(public_key, context)
 
     def format(self, compressed: bool = True) -> bytes:  # noqa: A003
         """
@@ -538,11 +551,13 @@ class PublicKeyXOnly:
             self.public_key = data
         else:
             public_key = ffi.new('secp256k1_xonly_pubkey *')
-            parsed = lib.secp256k1_xonly_pubkey_parse(context.ctx, public_key, data)
-            if not parsed:
-                raise ValueError('The public key could not be parsed or is invalid.')
+            if parsed := lib.secp256k1_xonly_pubkey_parse(
+                context.ctx, public_key, data
+            ):
+                self.public_key = public_key
 
-            self.public_key = public_key
+            else:
+                raise ValueError('The public key could not be parsed or is invalid.')
 
         self.parity = parity
         self.context = context
@@ -579,18 +594,19 @@ class PublicKeyXOnly:
 
         return cls(xonly_pubkey, parity=not not pk_parity[0], context=context)
 
-    def format(self) -> bytes:  # noqa: A003
+    def format(self) -> bytes:    # noqa: A003
         """Serialize the public key.
 
         :return: The public key serialized as 32 bytes.
         """
         output32 = ffi.new('unsigned char [32]')
 
-        res = lib.secp256k1_xonly_pubkey_serialize(self.context.ctx, output32, self.public_key)
-        if not res:
+        if res := lib.secp256k1_xonly_pubkey_serialize(
+            self.context.ctx, output32, self.public_key
+        ):
+            return bytes(ffi.buffer(output32, 32))
+        else:
             raise ValueError('Public key in self.public_key must be valid')
-
-        return bytes(ffi.buffer(output32, 32))
 
     def verify(self, signature: bytes, message: bytes) -> bool:
         """Verify a Schnorr signature over a given message.
