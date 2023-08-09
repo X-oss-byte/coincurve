@@ -9,7 +9,7 @@ from ._libsecp256k1 import ffi, lib
 class Context:
     def __init__(self, seed: bytes = None, flag=CONTEXT_ALL, name: str = ''):
         if flag not in CONTEXT_FLAGS:
-            raise ValueError('{} is an invalid context flag.'.format(flag))
+            raise ValueError(f'{flag} is an invalid context flag.')
         self._lock = Lock()
 
         self.ctx = ffi.gc(lib.secp256k1_context_create(flag), lib.secp256k1_context_destroy)
